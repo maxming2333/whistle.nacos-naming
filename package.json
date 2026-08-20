@@ -59,5 +59,8 @@
     "koa-onerror": "^4.2.0",
     "koa-static": "^5.0.0",
     "nacos": "2.6.3"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
   }
 }

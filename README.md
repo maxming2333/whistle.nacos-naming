@@ -20,7 +20,6 @@ admin-feature.example.com nacos-naming://{"serverList":"127.0.0.1:8848","service
 
 ```bash
 npm i -g whistle.nacos-naming
-w2 add whistle.nacos-naming
 ```
 
 ## 使用

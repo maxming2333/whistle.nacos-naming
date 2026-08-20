@@ -1,0 +1,63 @@
+{
+  "name": "whistle.nacos-naming",
+  "version": "1.0.0",
+  "description": "使用 Nacos 服务发现动态解析域名映射目标地址的 whistle 插件",
+  "keywords": [
+    "whistle",
+    "whistle-plugin",
+    "nacos",
+    "service-discovery",
+    "proxy",
+    "dns"
+  ],
+  "license": "MIT",
+  "author": "keroming <maxming2333@gmail.com>",
+  "homepage": "https://github.com/maxming2333/whistle.nacos-naming",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxming2333/whistle.nacos-naming.git"
+  },
+  "bugs": {
+    "url": "https://github.com/maxming2333/whistle.nacos-naming/issues"
+  },
+  "main": "index.js",
+  "types": "dist/rules-server.d.ts",
+  "files": [
+    "dist",
+    "public",
+    "index.js"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "whistleConfig": {},
+  "scripts": {
+    "dev": "tsc -w",
+    "build": "rimraf dist && tsc",
+    "test": "jest",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/koa": "^2.13.4",
+    "@types/koa__router": "^12.0.4",
+    "@types/koa-bodyparser": "^4.3.5",
+    "@types/koa-static": "^4.0.2",
+    "@types/node": "^24.0.14",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "rimraf": "5.0.10",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "5.7.3"
+  },
+  "dependencies": {
+    "@koa/router": "^13.1.1",
+    "json5": "2.2.3",
+    "koa": "^2.15.0",
+    "koa-bodyparser": "^4.4.1",
+    "koa-onerror": "^4.2.0",
+    "koa-static": "^5.0.0",
+    "nacos": "2.6.3"
+  }
+}

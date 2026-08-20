@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>whistle.nacos-naming 订阅状态</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 16px; color: #222; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 6px 10px; font-size: 13px; text-align: left; vertical-align: top; }
+    th { background: #f5f5f5; }
+    .status-active { color: #1a7f37; }
+    .status-error { color: #c62828; }
+    .status-connecting { color: #b26a00; }
+    button { cursor: pointer; margin-right: 4px; }
+    .instance-list { margin: 0; padding-left: 16px; }
+  </style>
+</head>
+<body>
+  <h2>whistle.nacos-naming 订阅状态</h2>
+  <p>
+    <button id="refresh-all">刷新列表</button>
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>serverList</th>
+        <th>namespace</th>
+        <th>group</th>
+        <th>serviceName</th>
+        <th>状态</th>
+        <th>健康实例</th>
+        <th>创建时间</th>
+        <th>最后推送时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="subscriptions-body"></tbody>
+  </table>
+
+  <script>
+    function formatTime(ts) {
+      if (!ts) return '-';
+      return new Date(ts).toLocaleString();
+    }
+
+    function renderCommaSeparated(value) {
+      if (!value) return '';
+      var parts = String(value).split(',').map(function (part) {
+        return part.trim();
+      }).filter(function (part) {
+        return part.length > 0;
+      });
+      if (parts.length <= 1) {
+        return value;
+      }
+      return '<ul class="instance-list">' +
+        parts.map(function (part) { return '<li>' + part + '</li>'; }).join('') +
+        '</ul>';
+    }
+
+    function renderInstances(instances) {
+      if (!instances || instances.length === 0) {
+        return '<em>无</em>';
+      }
+      var items = instances.map(function (inst) {
+        return '<li>' + inst.ip + ':' + inst.port +
+          ' (weight=' + inst.weight +
+          ', healthy=' + inst.healthy +
+          ', enabled=' + inst.enabled +
+          ', metadata=' + JSON.stringify(inst.metadata) + ')</li>';
+      });
+      return '<ul class="instance-list">' + items.join('') + '</ul>';
+    }
+
+    function renderRow(item) {
+      var statusClass = 'status-' + item.status;
+      var statusText = item.status;
+      if (item.status === 'error' && item.lastError) {
+        statusText += ': ' + item.lastError;
+      }
+      return '<tr>' +
+        '<td>' + item.key + '</td>' +
+        '<td>' + renderCommaSeparated(item.serverList) + '</td>' +
+        '<td>' + item.namespace + '</td>' +
+        '<td>' + item.groupName + '</td>' +
+        '<td>' + item.serviceName + '</td>' +
+        '<td class="' + statusClass + '">' + statusText + '</td>' +
+        '<td>' + renderInstances(item.instances) + '</td>' +
+        '<td>' + formatTime(item.createdAt) + '</td>' +
+        '<td>' + formatTime(item.lastPushedAt) + '</td>' +
+        '<td>' +
+          '<button data-action="refresh" data-key="' + item.key + '">立即刷新</button>' +
+          '<button data-action="remove" data-key="' + item.key + '">取消订阅</button>' +
+        '</td>' +
+        '</tr>';
+    }
+
+    function loadSubscriptions() {
+      fetch('./cgi-bin/subscriptions')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          var tbody = document.getElementById('subscriptions-body');
+          tbody.innerHTML = (data.subscriptions || []).map(renderRow).join('');
+        });
+    }
+
+    document.getElementById('refresh-all').addEventListener('click', loadSubscriptions);
+
+    document.getElementById('subscriptions-body').addEventListener('click', function (evt) {
+      var target = evt.target;
+      if (!(target instanceof HTMLElement)) return;
+      var action = target.getAttribute('data-action');
+      var key = target.getAttribute('data-key');
+      if (!action || !key) return;
+
+      var url = action === 'refresh'
+        ? './cgi-bin/subscriptions/refresh'
+        : './cgi-bin/subscriptions/remove';
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: key }),
+      }).then(function () {
+        loadSubscriptions();
+      });
+    });
+
+    loadSubscriptions();
+  </script>
+</body>
+</html>

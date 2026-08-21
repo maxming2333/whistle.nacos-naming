@@ -72,6 +72,15 @@ export async function handleRuleValue(
         })`
       );
     }
+    if (snapshot.status === 'error') {
+      // 首拉（getAllInstances）很快抛出异常时（如 nacos server 地址错误、
+      // 鉴权失败、网络不可达），snapshot.status 会是 'error'，
+      // snapshot.lastError 保存了具体错误原因，这里直接展示给用户，
+      // 与"超时"和"真正无实例"区分开。
+      return errorRules(
+        `服务 ${config.serviceName} 订阅初始化失败: ${snapshot.lastError} (namespace: ${config.namespace}, group: ${config.groupName})`
+      );
+    }
     return errorRules(
       `服务 ${config.serviceName} 不存在或当前没有健康实例 (namespace: ${config.namespace}, group: ${config.groupName})`
     );

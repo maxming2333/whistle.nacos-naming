@@ -161,4 +161,26 @@ describe('handleRuleValue', () => {
     expect(rules).toContain('statusCode://502');
     expect(body).toContain('订阅初始化超时');
   });
+
+  it('首拉快速失败（status 为 error）时返回包含具体错误原因的专门文案', async () => {
+    class ErrorFakeNacosClient {
+      subscribe() {}
+      unSubscribe() {}
+      async getAllInstances(): Promise<any[]> {
+        throw new Error('connect ECONNREFUSED 10.0.0.1:8848');
+      }
+    }
+    const manager = new SubscriptionManager(
+      () => new ErrorFakeNacosClient() as any
+    );
+
+    const response = await handleRuleValue(
+      '{"serverList":"10.0.0.1:8848","serviceName":"admin-feature"}',
+      manager
+    );
+    const { rules, body } = parseErrorResponse(response);
+    expect(rules).toContain('statusCode://502');
+    expect(body).toContain('订阅初始化失败');
+    expect(body).toContain('connect ECONNREFUSED 10.0.0.1:8848');
+  });
 });

@@ -2,10 +2,10 @@ import { handleRuleValue } from './nacos/handle-request';
 import { sharedSubscriptionManager } from './nacos/shared-manager';
 
 export default (server: Whistle.PluginServer, options: Whistle.PluginOptions) => {
-  server.on('request', (req: Whistle.PluginRequest, res: Whistle.PluginResponse) => {
+  server.on('request', async (req: Whistle.PluginRequest, res: Whistle.PluginResponse) => {
     const ruleValue = req.originalReq.ruleValue || '';
     try {
-      const response = handleRuleValue(ruleValue, sharedSubscriptionManager);
+      const response = await handleRuleValue(ruleValue, sharedSubscriptionManager);
       res.end(response);
     } catch (err: any) {
       console.error('[whistle.nacos-naming] rules-server 处理异常:', err);

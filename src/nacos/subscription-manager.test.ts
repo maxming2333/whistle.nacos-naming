@@ -9,6 +9,21 @@ class FakeNacosClient {
   public subscribeCalls: any[] = [];
   public getAllInstancesCalls: any[] = [];
   private listener: ((hosts: any[]) => void) | null = null;
+  // 可选:外部注入的 getAllInstances 返回值/延迟控制器，
+  // 用于模拟"首拉尚未完成"的真实网络延迟场景。
+  public getAllInstancesImpl: (
+    serviceName: string,
+    groupName: string
+  ) => Promise<any[]> = async () => [
+    {
+      ip: '10.0.0.9',
+      port: 8080,
+      weight: 1,
+      healthy: true,
+      enabled: true,
+      metadata: {},
+    },
+  ];
 
   subscribe(info: any, listener: (hosts: any[]) => void) {
     this.subscribeCalls.push(info);
@@ -21,16 +36,7 @@ class FakeNacosClient {
 
   async getAllInstances(serviceName: string, groupName: string) {
     this.getAllInstancesCalls.push({ serviceName, groupName });
-    return [
-      {
-        ip: '10.0.0.9',
-        port: 8080,
-        weight: 1,
-        healthy: true,
-        enabled: true,
-        metadata: {},
-      },
-    ];
+    return this.getAllInstancesImpl(serviceName, groupName);
   }
 
   close() {
@@ -152,10 +158,13 @@ describe('SubscriptionManager', () => {
     });
 
     const snapshot = manager.getOrCreate(baseConfig());
+    // getOrCreate 本身已同步发起一次首拉 getAllInstances，
+    // 这里等待首拉完成后再调用 refresh，验证 refresh 会再触发一次调用。
+    await manager.waitReady(snapshot.key);
     const ok = await manager.refresh(snapshot.key);
 
     expect(ok).toBe(true);
-    expect(fakeClient.getAllInstancesCalls.length).toBe(1);
+    expect(fakeClient.getAllInstancesCalls.length).toBe(2);
     const updated = manager.listAll()[0];
     expect(updated.instances[0].ip).toBe('10.0.0.9');
   });
@@ -186,5 +195,99 @@ describe('SubscriptionManager', () => {
     );
     const ok = await manager.remove('not-exist-key');
     expect(ok).toBe(false);
+  });
+
+  it('首次 getOrCreate 后，waitReady 会等待 getAllInstances 首拉完成并返回真实数据', async () => {
+    let fakeClient!: FakeNacosClient;
+    const manager = new SubscriptionManager((clientConfig) => {
+      fakeClient = new FakeNacosClient();
+      return fakeClient as any;
+    });
+
+    let resolveFirstLoad!: (hosts: any[]) => void;
+    fakeClient = undefined as any; // 占位，factory 内会重新赋值
+    const config = baseConfig();
+    const managerWithDelay = new SubscriptionManager((clientConfig) => {
+      fakeClient = new FakeNacosClient();
+      fakeClient.getAllInstancesImpl = () =>
+        new Promise((resolve) => {
+          resolveFirstLoad = resolve;
+        });
+      return fakeClient as any;
+    });
+
+    const snapshot = managerWithDelay.getOrCreate(config);
+    // 首次同步返回时，instances 仍为空（尚未等待）
+    expect(snapshot.instances).toEqual([]);
+
+    const waitPromise = managerWithDelay.waitReady(snapshot.key);
+
+    // 模拟 nacos server 延迟返回首批实例
+    resolveFirstLoad([
+      {
+        ip: '10.0.0.5',
+        port: 8888,
+        weight: 3,
+        healthy: true,
+        enabled: true,
+        metadata: {},
+      },
+    ]);
+
+    const ready = await waitPromise;
+    expect(ready).not.toBeNull();
+    expect(ready!.instances).toEqual([
+      {
+        ip: '10.0.0.5',
+        port: 8888,
+        weight: 3,
+        healthy: true,
+        enabled: true,
+        metadata: {},
+      },
+    ]);
+    expect(ready!.status).toBe('active');
+  });
+
+  it('waitReady 对已存在（非首次）的 entry 立即返回最新快照，不重复等待', async () => {
+    let fakeClient!: FakeNacosClient;
+    const manager = new SubscriptionManager((clientConfig) => {
+      fakeClient = new FakeNacosClient();
+      return fakeClient as any;
+    });
+
+    const snapshot = manager.getOrCreate(baseConfig());
+    // 等首次 initialLoad 完成
+    await manager.waitReady(snapshot.key);
+
+    // 再次调用 getOrCreate（命中已存在 entry），waitReady 应立即返回，不再等待
+    const snapshot2 = manager.getOrCreate(baseConfig());
+    const ready2 = await manager.waitReady(snapshot2.key);
+    expect(ready2).not.toBeNull();
+    expect(ready2!.status).toBe('active');
+  });
+
+  it('waitReady 对不存在的 key 返回 null', async () => {
+    const manager = new SubscriptionManager(
+      () => new FakeNacosClient() as any
+    );
+    const ready = await manager.waitReady('not-exist-key');
+    expect(ready).toBeNull();
+  });
+
+  it('waitReady 超过 timeoutMs 仍未完成首拉时，返回当前快照（status 仍为 connecting）', async () => {
+    let fakeClient!: FakeNacosClient;
+    const manager = new SubscriptionManager((clientConfig) => {
+      fakeClient = new FakeNacosClient();
+      fakeClient.getAllInstancesImpl = () => new Promise(() => {}); // 永不 resolve
+      return fakeClient as any;
+    });
+
+    const snapshot = manager.getOrCreate(baseConfig());
+    const ready = await manager.waitReady(snapshot.key, 10);
+
+    expect(ready).not.toBeNull();
+    expect(ready!.status).toBe('connecting');
+    expect(ready!.instances).toEqual([]);
   });
 });

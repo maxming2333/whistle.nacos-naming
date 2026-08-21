@@ -20,6 +20,7 @@ export interface SubscriptionSnapshot {
 interface SubscriptionEntry extends SubscriptionSnapshot {
   client: NacosNamingClient;
   listener: (hosts: any[]) => void;
+  initialLoad: Promise<void>;
 }
 
 export type NacosClientFactory = (clientConfig: {
@@ -98,6 +99,7 @@ export class SubscriptionManager {
       status: 'connecting',
       client,
       listener: () => {},
+      initialLoad: Promise.resolve(),
     };
 
     const listener = (hosts: any[]) => {
@@ -116,6 +118,22 @@ export class SubscriptionManager {
       entry.status = 'error';
       entry.lastError = err.message;
     }
+
+    // 首次创建订阅时，同步发起一次 getAllInstances 网络请求拉取首批实例数据，
+    // 避免"订阅刚注册、推送还没到达"这段窗口期内查询到空列表。
+    // 这个 Promise 挂在 entry 上，供 waitReady() 等待。
+    entry.initialLoad = client
+      .getAllInstances(config.serviceName, config.groupName)
+      .then((hosts) => {
+        entry.instances = (hosts || []).map(toNacosInstance);
+        entry.lastPushedAt = Date.now();
+        entry.status = 'active';
+        entry.lastError = undefined;
+      })
+      .catch((err: any) => {
+        entry.status = 'error';
+        entry.lastError = err.message;
+      });
 
     this.entries.set(key, entry);
     return toSnapshot(entry);
@@ -144,6 +162,23 @@ export class SubscriptionManager {
       entry.lastError = err.message;
     }
     return true;
+  }
+
+  async waitReady(
+    key: string,
+    timeoutMs: number = 10000
+  ): Promise<SubscriptionSnapshot | null> {
+    const entry = this.entries.get(key);
+    if (!entry) {
+      return null;
+    }
+
+    await Promise.race([
+      entry.initialLoad,
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+
+    return toSnapshot(entry);
   }
 
   async remove(key: string): Promise<boolean> {

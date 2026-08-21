@@ -62,3 +62,7 @@ typings/
 /.history
 /dist
 .console.log
+
+
+# git worktrees（用于隔离功能分支开发）
+.worktrees
